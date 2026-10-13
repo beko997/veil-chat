@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-veil_chat}
+      POSTGRES_USER: ${POSTGRES_USER:-veil_chat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veil_chat_dev}
+    ports:
+      - "${DB_BIND_ADDRESS:-127.0.0.1}:${DB_PORT:-5432}:5432"
+    volumes:
+      - veil-chat-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-veil_chat} -d ${POSTGRES_DB:-veil_chat}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      STATIC_DIR: /app/artifacts/veil-chat/dist/public
+      DATABASE_URL: ${CONTAINER_DATABASE_URL:-postgresql://veil_chat:veil_chat_dev@postgres:5432/veil_chat}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  veil-chat-postgres:

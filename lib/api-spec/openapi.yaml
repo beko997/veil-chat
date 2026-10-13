@@ -1,0 +1,223 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: chat
+    description: Anonymous encrypted chat operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /rooms:
+    post:
+      operationId: createRoom
+      tags: [chat]
+      summary: Create a chat room
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomInput"
+      responses:
+        "201":
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+  /messages:
+    get:
+      operationId: listRoomMessages
+      tags: [chat]
+      summary: List room messages
+      parameters:
+        - name: roomId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: afterId
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: beforeId
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+      responses:
+        "200":
+          description: Messages in chronological order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatMessage"
+  /rooms/{roomId}/messages:
+    post:
+      operationId: sendRoomMessage
+      tags: [chat]
+      summary: Store an encrypted message
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageInput"
+      responses:
+        "201":
+          description: Message stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+  /rooms/{roomId}/media/{mediaId}:
+    get:
+      operationId: getRoomMedia
+      tags: [chat]
+      summary: Retrieve encrypted media for a room
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Encrypted media payload as base64
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMedia"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    RoomInput:
+      type: object
+      properties:
+        label:
+          type: ["string", "null"]
+          maxLength: 120
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, createdAt]
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        roomId:
+          type: string
+          format: uuid
+        ciphertext:
+          type: string
+        iv:
+          type: string
+        sender:
+          type: ["string", "null"]
+        kind:
+          type: string
+          enum: [text, image, video, file]
+        mediaId:
+          type: ["string", "null"]
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, roomId, ciphertext, iv, kind, createdAt]
+    ChatMessageInput:
+      type: object
+      properties:
+        ciphertext:
+          type: string
+          minLength: 1
+          description: AES-GCM ciphertext; new rooms include an ephemeral ECDH P-256 public key envelope.
+          maxLength: 200256
+        iv:
+          type: string
+          minLength: 1
+          maxLength: 128
+        sender:
+          type: ["string", "null"]
+          format: uuid
+        kind:
+          type: string
+          enum: [text, image, video, file]
+        mediaData:
+          type: ["string", "null"]
+          description: Base64-encoded ECDH P-256 and AES-GCM media envelope; original file maximum is 10 MiB.
+          maxLength: 13981152
+          pattern: "^[A-Za-z0-9+/]*={0,2}$"
+      required: [ciphertext, iv, kind]
+    ChatMedia:
+      type: object
+      properties:
+        data:
+          type: string
+          description: Base64-encoded ECDH P-256 and AES-GCM encrypted bytes.
+          maxLength: 13981152
+          pattern: "^[A-Za-z0-9+/]*={0,2}$"
+      required: [data]
+
