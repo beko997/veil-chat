@@ -5,7 +5,6 @@ dist
 tmp
 out-tsc
 *.tsbuildinfo
-artifacts/veil-chat/public/downloads/veil-chat-source.zip
 .expo
 .expo-shared
 
@@ -48,3 +47,6 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Local encrypted media staging/cache
+.data/

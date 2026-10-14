@@ -15,3 +15,4 @@ export * from './healthStatus';
 export * from './listRoomMessagesParams';
 export * from './room';
 export * from './roomInput';
+export * from './uploadConfig';

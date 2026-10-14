@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { getMaxUploadRequestBodyBytes } from "./lib/upload-limits";
 
 const app: Express = express();
 
@@ -26,7 +27,7 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json({ limit: "15mb" }));
+app.use(express.json({ limit: getMaxUploadRequestBodyBytes() }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);

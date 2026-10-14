@@ -1,9 +1,14 @@
+import { createReadStream } from "node:fs";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { logger } from "./logger";
 
 export type MediaStorageProvider = "r2" | "b2";
 
@@ -13,6 +18,28 @@ type StorageClient = {
 };
 
 const clients = new Map<MediaStorageProvider, StorageClient>();
+const MEDIA_KEY_PATTERN =
+  /^media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function getLocalMediaPath(key: string): string {
+  const match = MEDIA_KEY_PATTERN.exec(key);
+  if (!match) throw new Error("The media storage key is invalid.");
+
+  const configuredDirectory = process.env["MEDIA_LOCAL_STORAGE_DIR"]?.trim();
+  const directory = configuredDirectory
+    ? path.resolve(configuredDirectory)
+    : path.resolve(process.cwd(), "../../.data/veil-chat-media");
+  return path.join(directory, `${key.slice("media/".length)}.enc`);
+}
+
+function isMissingFile(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
+}
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -76,15 +103,11 @@ function parseProvider(provider: string): MediaStorageProvider {
   throw new Error(`Unsupported media storage provider: ${provider}.`);
 }
 
-export function getMediaStorageWriteProvider(): MediaStorageProvider | null {
-  const configured = (
-    process.env["MEDIA_STORAGE_PROVIDER"] ?? "database"
-  ).trim().toLowerCase();
-
-  if (configured === "database") return null;
+export function getMediaStorageWriteProvider(): MediaStorageProvider {
+  const configured = process.env["MEDIA_STORAGE_PROVIDER"]?.trim().toLowerCase();
   if (configured !== "r2" && configured !== "b2") {
     throw new Error(
-      "MEDIA_STORAGE_PROVIDER must be set to database, r2, or b2.",
+      "Set MEDIA_STORAGE_PROVIDER to r2 or b2 before accepting file uploads.",
     );
   }
 
@@ -99,20 +122,56 @@ export async function putEncryptedMedia(
   body: Buffer,
 ): Promise<void> {
   const { client, bucket } = createStorageClient(provider);
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: body,
-      ContentType: "application/octet-stream",
-    }),
-  );
+  const localPath = getLocalMediaPath(key);
+  const stagingPath = `${localPath}.${randomUUID()}.uploading`;
+  await mkdir(path.dirname(localPath), { recursive: true });
+
+  let uploadedToBucket = false;
+  try {
+    await writeFile(stagingPath, body, { flag: "wx" });
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: createReadStream(stagingPath),
+        ContentLength: body.byteLength,
+        ContentType: "application/octet-stream",
+      }),
+    );
+    uploadedToBucket = true;
+    await rename(stagingPath, localPath);
+  } catch (error) {
+    await unlink(stagingPath).catch(() => undefined);
+    if (uploadedToBucket) {
+      await client
+        .send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
+        .catch((cleanupError: unknown) => {
+          logger.error(
+            { err: cleanupError, provider, key },
+            "Could not remove media after a local staging failure",
+          );
+        });
+    }
+    throw error;
+  }
 }
 
 export async function getEncryptedMedia(
   provider: string,
   key: string,
 ): Promise<Buffer> {
+  const localPath = getLocalMediaPath(key);
+  try {
+    return await readFile(localPath);
+  } catch (error) {
+    if (!isMissingFile(error)) {
+      logger.warn(
+        { err: error, provider, key },
+        "Could not read local media cache; falling back to object storage",
+      );
+    }
+  }
+
   const { client, bucket } = createStorageClient(parseProvider(provider));
   const response = await client.send(
     new GetObjectCommand({ Bucket: bucket, Key: key }),
@@ -122,7 +181,22 @@ export async function getEncryptedMedia(
     throw new Error("The object storage provider returned an empty object.");
   }
 
-  return Buffer.from(await response.Body.transformToByteArray());
+  const bytes = Buffer.from(await response.Body.transformToByteArray());
+  const stagingPath = `${localPath}.${randomUUID()}.cache`;
+
+  try {
+    await mkdir(path.dirname(localPath), { recursive: true });
+    await writeFile(stagingPath, bytes, { flag: "wx" });
+    await rename(stagingPath, localPath);
+  } catch (error) {
+    await unlink(stagingPath).catch(() => undefined);
+    logger.warn(
+      { err: error, provider, key },
+      "Could not cache media fetched from object storage",
+    );
+  }
+
+  return bytes;
 }
 
 export async function deleteEncryptedMedia(
@@ -131,4 +205,13 @@ export async function deleteEncryptedMedia(
 ): Promise<void> {
   const { client, bucket } = createStorageClient(provider);
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+  const localPath = getLocalMediaPath(key);
+  await unlink(localPath).catch((error: unknown) => {
+    if (!isMissingFile(error)) {
+      logger.warn(
+        { err: error, provider, key },
+        "Could not remove local media cache",
+      );
+    }
+  });
 }

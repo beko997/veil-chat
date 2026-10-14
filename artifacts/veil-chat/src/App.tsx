@@ -6,8 +6,8 @@ import {
   Trash2, TriangleAlert, UserRound, X,
 } from "lucide-react";
 import {
-  getGetRoomMediaQueryKey, getListRoomMessagesQueryKey, useCreateRoom, useGetRoomMedia,
-  useListRoomMessages, useSendRoomMessage,
+  getGetRoomMediaQueryKey, getGetUploadConfigQueryKey, getListRoomMessagesQueryKey, useCreateRoom,
+  useGetRoomMedia, useGetUploadConfig, useListRoomMessages, useSendRoomMessage,
 } from "@workspace/api-client-react";
 import type { ChatMessage } from "@workspace/api-client-react";
 import { Router as WouterRouter } from "wouter";
@@ -17,7 +17,6 @@ import "./index.css";
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } },
 });
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const SENDER_ID = getAnonymousId();
 const PROFILE_PREFIX = "__VEIL_PROFILE_V1__:";
 const PROFILE_STORAGE_KEY = "veil-local-profile-v1";
@@ -416,6 +415,9 @@ function RoomView({ roomId, roomKey, profile, onSaveProfile }: {
   const [profileError, setProfileError] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
   const [lightbox, setLightbox] = useState<{ kind: "image" | "video"; src: string } | null>(null);
+  const uploadConfigQuery = useGetUploadConfig({
+    query: { queryKey: getGetUploadConfigQueryKey(), retry: 1 },
+  });
   const listRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -532,8 +534,15 @@ function RoomView({ roomId, roomKey, profile, onSaveProfile }: {
 
   async function submitFile(file: File) {
     setFileError("");
-    if (file.size > MAX_FILE_BYTES) {
-      setFileError("Dosya 10 MiB sınırını aşıyor. Daha küçük bir dosya seçin.");
+    const maxUploadSizeMb = uploadConfigQuery.data?.maxUploadSizeMb;
+    if (maxUploadSizeMb === undefined) {
+      setFileError(uploadConfigQuery.isError
+        ? "Dosya yükleme sınırı alınamadı. Yeniden deneyin."
+        : "Dosya yükleme sınırı yükleniyor. Birazdan yeniden deneyin.");
+      return;
+    }
+    if (file.size > maxUploadSizeMb * 1024 * 1024) {
+      setFileError(`Dosya ${maxUploadSizeMb} MiB sınırını aşıyor. Daha küçük bir dosya seçin.`);
       return;
     }
     if (!key) return;
@@ -589,7 +598,13 @@ function RoomView({ roomId, roomKey, profile, onSaveProfile }: {
       </header>
 
       <div className="border-b border-[#1b3024] bg-[#0c1811] px-4 py-2 text-center text-[10px] text-[#779080]">
-        Anahtar yalnızca bağlantında kalır <span className="mx-2 text-[#3c5847]">/</span> Medya başına en fazla 10 MiB
+        Anahtar yalnızca bağlantında kalır <span className="mx-2 text-[#3c5847]">/</span>
+        {uploadConfigQuery.data
+          ? ` Medya başına en fazla ${uploadConfigQuery.data.maxUploadSizeMb} MiB`
+          : uploadConfigQuery.isError
+            ? " Yükleme sınırı alınamadı"
+            : " Yükleme sınırı yükleniyor…"}
+        {uploadConfigQuery.isError && <button type="button" className="ml-2 text-emerald-400 underline underline-offset-2" onClick={() => void uploadConfigQuery.refetch()}>Yeniden dene</button>}
       </div>
 
       <section ref={listRef} className="flex-1 overflow-y-auto">
@@ -626,7 +641,7 @@ function RoomView({ roomId, roomKey, profile, onSaveProfile }: {
           {fileError && <p role="alert" className="mb-2 text-xs text-rose-300">{fileError}</p>}
           {profileError && <p data-testid="text-profile-send-error" role="alert" className="mb-2 text-xs text-rose-300">{profileError}</p>}
           <div className="flex items-end gap-2 rounded-2xl border border-[#294331] bg-[#0d1912] p-2 transition-colors focus-within:border-emerald-700/80">
-            <button data-testid="button-attach-file" aria-label="Fotoğraf, video veya dosya ekle" title="Dosya ekle · en fazla 10 MiB" onClick={() => fileRef.current?.click()} disabled={sendMessage.isPending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#8ca394] transition-colors hover:bg-emerald-950/60 hover:text-emerald-400 disabled:opacity-50"><Paperclip size={17} /></button>
+          <button data-testid="button-attach-file" aria-label="Fotoğraf, video veya dosya ekle" title={uploadConfigQuery.data ? `Dosya ekle · en fazla ${uploadConfigQuery.data.maxUploadSizeMb} MiB` : "Dosya yükleme sınırı yükleniyor"} onClick={() => fileRef.current?.click()} disabled={sendMessage.isPending || !uploadConfigQuery.data} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#8ca394] transition-colors hover:bg-emerald-950/60 hover:text-emerald-400 disabled:opacity-50"><Paperclip size={17} /></button>
             <textarea data-testid="input-message" ref={textareaRef} rows={1} value={messageText} onChange={(event) => setMessageText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitText(); } }} placeholder="Şifreli mesajını yaz…" className="max-h-[132px] min-h-10 flex-1 resize-none border-0 bg-transparent px-1 py-2.5 text-sm leading-5 text-[#dcebe1] outline-none placeholder:text-[#62796a]" />
             <button data-testid="button-send-message" aria-label="Mesajı gönder" onClick={() => void submitText()} disabled={!messageText.trim() || sendMessage.isPending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-[#07130c] transition-colors hover:bg-emerald-400 disabled:opacity-35">{sendMessage.isPending ? <span className="h-4 w-4 animate-pulse rounded-full border-2 border-current/50" /> : <Send size={16} />}</button>
           </div>

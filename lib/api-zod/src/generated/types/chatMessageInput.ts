@@ -23,8 +23,7 @@ export interface ChatMessageInput {
   sender?: string | null;
   kind: ChatMessageInputKind;
   /**
-     * Base64-encoded ECDH P-256 and AES-GCM media envelope; original file maximum is 10 MiB.
-     * @maxLength 13981152
+     * Base64-encoded ECDH P-256 and AES-GCM media envelope. The original file limit is configured by MAX_UPLOAD_SIZE_MB.
      * @nullable
      * @pattern ^[A-Za-z0-9+/]*={0,2}$
      */

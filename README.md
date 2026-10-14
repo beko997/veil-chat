@@ -1,6 +1,6 @@
 # Veil Chat — taşınabilir kaynak paketi
 
-Bu arşiv, Veil Chat web arayüzünü, API sunucusunu ve Docker Compose ile tek komutluk dağıtım dosyalarını içerir. Supabase kullanmaz; PostgreSQL ve Drizzle şemasıyla çalışır. Yeni odalarda tarayıcı, davet bağlantısının `#` parçasında kalan ECDH P-256 özel anahtarıyla her ileti ve dosya için tek kullanımlık bir anahtar türetir; içerik AES-GCM 256 ile şifrelenir. Sunucu özel anahtarı veya açık içeriği almaz. Eski AES anahtarlı davet bağlantıları ve kayıtlar da okunabilir. Anonim dosya paylaşımında dosya başına 10 MiB sınırı vardır.
+Bu arşiv, Veil Chat web arayüzünü, API sunucusunu ve Docker Compose ile tek komutluk dağıtım dosyalarını içerir. Supabase kullanmaz; PostgreSQL ve Drizzle şemasıyla çalışır. Yeni odalarda tarayıcı, davet bağlantısının `#` parçasında kalan ECDH P-256 özel anahtarıyla her ileti ve dosya için tek kullanımlık bir anahtar türetir; içerik AES-GCM 256 ile şifrelenir. Sunucu özel anahtarı veya açık içeriği almaz. Eski AES anahtarlı davet bağlantıları ve kayıtlar da okunabilir. Dosya boyutu sınırı `MAX_UPLOAD_SIZE_MB` ortam değişkeninden okunur; belirtilmezse 10 MiB kullanılır. Yeni dosyalar Cloudflare R2 veya Backblaze B2'ye yüklenir ve uygulama üzerinden sunulur.
 
 ## Gereksinimler
 

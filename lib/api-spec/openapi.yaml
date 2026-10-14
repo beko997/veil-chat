@@ -26,6 +26,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /upload-config:
+    get:
+      operationId: getUploadConfig
+      tags: [chat]
+      summary: Get the public file upload limit
+      responses:
+        "200":
+          description: Current upload limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadConfig"
   /rooms:
     post:
       operationId: createRoom
@@ -144,6 +156,14 @@ components:
           type: string
       required:
         - status
+    UploadConfig:
+      type: object
+      properties:
+        maxUploadSizeMb:
+          type: number
+          minimum: 0.01
+          description: Maximum original file size in MiB, read from MAX_UPLOAD_SIZE_MB.
+      required: [maxUploadSizeMb]
     RoomInput:
       type: object
       properties:
@@ -207,8 +227,7 @@ components:
           enum: [text, image, video, file]
         mediaData:
           type: ["string", "null"]
-          description: Base64-encoded ECDH P-256 and AES-GCM media envelope; original file maximum is 10 MiB.
-          maxLength: 13981152
+          description: Base64-encoded ECDH P-256 and AES-GCM media envelope. The original file limit is configured by MAX_UPLOAD_SIZE_MB.
           pattern: "^[A-Za-z0-9+/]*={0,2}$"
       required: [ciphertext, iv, kind]
     ChatMedia:
@@ -217,7 +236,6 @@ components:
         data:
           type: string
           description: Base64-encoded ECDH P-256 and AES-GCM encrypted bytes.
-          maxLength: 13981152
           pattern: "^[A-Za-z0-9+/]*={0,2}$"
       required: [data]
 

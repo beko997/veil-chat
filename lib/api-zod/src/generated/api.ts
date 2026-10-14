@@ -18,6 +18,18 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Get the public file upload limit
+ */
+export const getUploadConfigResponseMaxUploadSizeMbMin = 0.01;
+
+
+
+export const GetUploadConfigResponse = zod.object({
+  "maxUploadSizeMb": zod.number().min(getUploadConfigResponseMaxUploadSizeMbMin).describe('Maximum original file size in MiB, read from MAX_UPLOAD_SIZE_MB.')
+})
+
+
+/**
  * @summary Create a chat room
  */
 export const createRoomBodyLabelMax = 120;
@@ -80,9 +92,6 @@ export const sendRoomMessageBodyCiphertextMax = 500000;
 
 export const sendRoomMessageBodyIvMax = 128;
 
-export const sendRoomMessageBodyMediaDataMax = 13981152;
-
-
 export const sendRoomMessageBodyMediaDataRegExp = new RegExp('^[A-Za-z0-9+/]*={0,2}$');
 
 
@@ -91,7 +100,7 @@ export const SendRoomMessageBody = zod.object({
   "iv": zod.string().min(1).max(sendRoomMessageBodyIvMax),
   "sender": zod.string().uuid().nullish(),
   "kind": zod.enum(['text', 'image', 'video', 'file']),
-  "mediaData": zod.string().max(sendRoomMessageBodyMediaDataMax).regex(sendRoomMessageBodyMediaDataRegExp).nullish().describe('Base64-encoded ECDH P-256 and AES-GCM media envelope; original file maximum is 10 MiB.')
+  "mediaData": zod.string().regex(sendRoomMessageBodyMediaDataRegExp).nullish().describe('Base64-encoded ECDH P-256 and AES-GCM media envelope. The original file limit is configured by MAX_UPLOAD_SIZE_MB.')
 })
 
 
@@ -117,14 +126,11 @@ export const GetRoomMediaParams = zod.object({
   "mediaId": zod.coerce.string().uuid()
 })
 
-export const getRoomMediaResponseDataMax = 13981152;
-
-
 export const getRoomMediaResponseDataRegExp = new RegExp('^[A-Za-z0-9+/]*={0,2}$');
 
 
 export const GetRoomMediaResponse = zod.object({
-  "data": zod.string().max(getRoomMediaResponseDataMax).regex(getRoomMediaResponseDataRegExp).describe('Base64-encoded ECDH P-256 and AES-GCM encrypted bytes.')
+  "data": zod.string().regex(getRoomMediaResponseDataRegExp).describe('Base64-encoded ECDH P-256 and AES-GCM encrypted bytes.')
 })
 
 

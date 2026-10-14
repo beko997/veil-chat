@@ -4,6 +4,7 @@ import { and, asc, desc, eq, gt, lt } from "drizzle-orm";
 import {
   CreateRoomBody,
   CreateRoomResponse,
+  GetUploadConfigResponse,
   GetRoomMediaParams,
   GetRoomMediaResponse,
   ListRoomMessagesQueryParams,
@@ -26,11 +27,20 @@ import {
   putEncryptedMedia,
   type MediaStorageProvider,
 } from "../lib/media-storage";
+import {
+  getMaxEncryptedMediaBytes,
+  getMaxUploadSizeMb,
+} from "../lib/upload-limits";
 
 const router: IRouter = Router();
-// 10 MiB plaintext + ECDH media envelope (10-byte marker, 65-byte public key,
-// 12-byte AES-GCM IV, and 16-byte authentication tag).
-const MAX_ENCRYPTED_MEDIA_BYTES = 10 * 1024 * 1024 + 103;
+
+router.get("/upload-config", (_req, res): void => {
+  res.json(
+    GetUploadConfigResponse.parse({
+      maxUploadSizeMb: getMaxUploadSizeMb(),
+    }),
+  );
+});
 
 router.post("/rooms", async (req, res): Promise<void> => {
   const parsed = CreateRoomBody.safeParse(req.body);
@@ -118,12 +128,14 @@ router.post("/rooms/:roomId/messages", async (req, res): Promise<void> => {
   if (mediaData != null) {
     encryptedBytes = Buffer.from(mediaData, "base64");
     const canonicalBase64 = encryptedBytes.toString("base64");
-    if (
-      encryptedBytes.byteLength === 0 ||
-      encryptedBytes.byteLength > MAX_ENCRYPTED_MEDIA_BYTES ||
-      canonicalBase64 !== mediaData
-    ) {
-      res.status(400).json({ error: "Media must be valid base64 and the original file must be no larger than 10 MiB." });
+    if (encryptedBytes.byteLength > getMaxEncryptedMediaBytes()) {
+      res.status(413).json({
+        error: `File exceeds the ${getMaxUploadSizeMb()} MB upload limit.`,
+      });
+      return;
+    }
+    if (encryptedBytes.byteLength === 0 || canonicalBase64 !== mediaData) {
+      res.status(400).json({ error: "Media must contain valid, non-empty base64 data." });
       return;
     }
 
@@ -171,7 +183,7 @@ router.post("/rooms/:roomId/messages", async (req, res): Promise<void> => {
         await tx.insert(veilChatMediaTable).values({
           id: mediaId,
           roomId,
-          encryptedData: storageKey ? null : encryptedBytes,
+          encryptedData: null,
           storageProvider,
           storageKey,
         });

@@ -26,7 +26,8 @@ import type {
   HealthStatus,
   ListRoomMessagesParams,
   Room,
-  RoomInput
+  RoomInput,
+  UploadConfig
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -122,6 +123,83 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetUploadConfigUrl = () => {
+
+
+
+
+  return `/api/upload-config`
+}
+
+/**
+ * @summary Get the public file upload limit
+ */
+export const getUploadConfig = async ( options?: Parameters<typeof customFetch>[1]): Promise<UploadConfig> => {
+
+  return customFetch<UploadConfig>(getGetUploadConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUploadConfigQueryKey = () => {
+    return [
+    `/api/upload-config`
+    ] as const;
+    }
+
+
+export const getGetUploadConfigQueryOptions = <TData = Awaited<ReturnType<typeof getUploadConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUploadConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUploadConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUploadConfig>>> = ({ signal }) => getUploadConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUploadConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUploadConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getUploadConfig>>>
+export type GetUploadConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the public file upload limit
+ */
+
+export function useGetUploadConfig<TData = Awaited<ReturnType<typeof getUploadConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUploadConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUploadConfigQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

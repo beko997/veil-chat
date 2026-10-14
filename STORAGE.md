@@ -1,15 +1,31 @@
 # Medya depolama ayarları
 
-Uygulama, yeni eklenen dosyaların şifreli baytlarını PostgreSQL yerine Cloudflare
-R2 veya Backblaze B2'de saklayabilir. Tarayıcı uçtan uca şifrelemeyi yüklemeden
-önce yapar; bucket'ı özel tutun. Dosyalar, mevcut `/api` medya rotası üzerinden
-alınır ve API yanıtı değiştirilmediği için istemci kodu sağlayıcıdan bağımsızdır.
+Uygulama, yeni eklenen dosyaların şifreli baytlarını Cloudflare R2 veya Backblaze
+B2'de saklar. Tarayıcı uçtan uca şifrelemeyi yüklemeden önce yapar; bucket'ı özel
+tutun. Dosyalar yerel diske yazılır, seçilen bucket'a aktarılır ve uygulamanın
+`/api` medya rotası üzerinden istemciye sunulur.
 
 `MEDIA_STORAGE_PROVIDER` değerini sunucu ortam değişkenlerine ekleyin:
 
-- `database` — PostgreSQL kullanır; ayar belirtilmezse varsayılandır.
 - `r2` — yeni dosyaları Cloudflare R2'ye yükler.
 - `b2` — yeni dosyaları Backblaze B2'ye yükler.
+
+Yeni dosya yüklemelerinde bir sağlayıcı zorunludur; ayarlanmamışsa yüklemeler
+kapalı kalır. Eski PostgreSQL medya kayıtları okunmaya devam eder.
+
+## Dosya boyutu ve yerel önbellek
+
+`MAX_UPLOAD_SIZE_MB`, şifrelemeden önce kabul edilen en büyük dosya boyutunu
+MiB cinsinden belirler. Varsayılan değer `10`'dur. Hem arayüz hem sunucu aynı
+değeri API'den alır; sunucu şifreli yük boyutunu da sınar. JSON/base64 yükleri
+nedeniyle çok yüksek değerler sunucuda daha fazla bellek kullanır.
+
+Yükleme önce sunucunun yerel `.data/veil-chat-media` klasörüne geçici olarak
+yazılır, oradan seçilen bucket'a aktarılır ve yerel kopya önbellek olarak tutulur.
+Dosya yerel klasörde bulunmazsa sunucu özel bucket'tan indirir, önbelleği yeniler
+ve şifreli içeriği uygulama üzerinden istemciye döndürür. Yerel klasör kalıcı
+depolama sayılmaz; dağıtımlarda asıl kopya bucket'tır. Klasör
+`MEDIA_LOCAL_STORAGE_DIR` ile değiştirilebilir.
 
 ## Cloudflare R2
 
@@ -54,3 +70,7 @@ Ortam değişkenlerini uygulamanın çalıştığı yerde ayarlayın (örneğin 
 servis ayarları → Environment). Anahtarları kaynak koda, `.env` dosyasına veya
 istemci ortam değişkenlerine koymayın. Şema değişikliği dağıtım sırasında DB
 push adımını gerektirir: `pnpm --filter @workspace/db run push`.
+
+Replit'te `MAX_UPLOAD_SIZE_MB` ve `MEDIA_STORAGE_PROVIDER` değerlerini ortam
+değişkeni olarak; erişim anahtarlarını Secrets olarak ekleyin. R2 için
+`R2_SECRET_ACCESS_KEY`, B2 için `B2_APPLICATION_KEY` gizli tutulmalıdır.

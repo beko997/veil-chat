@@ -9,6 +9,14 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface UploadConfig {
+  /**
+     * Maximum original file size in MiB, read from MAX_UPLOAD_SIZE_MB.
+     * @minimum 0.01
+     */
+  maxUploadSizeMb: number;
+}
+
 export interface RoomInput {
   /**
      * @maxLength 120
@@ -74,8 +82,7 @@ export interface ChatMessageInput {
   sender?: string | null;
   kind: ChatMessageInputKind;
   /**
-     * Base64-encoded ECDH P-256 and AES-GCM media envelope; original file maximum is 10 MiB.
-     * @maxLength 13981152
+     * Base64-encoded ECDH P-256 and AES-GCM media envelope. The original file limit is configured by MAX_UPLOAD_SIZE_MB.
      * @nullable
      * @pattern ^[A-Za-z0-9+/]*={0,2}$
      */
@@ -85,7 +92,6 @@ export interface ChatMessageInput {
 export interface ChatMedia {
   /**
      * Base64-encoded ECDH P-256 and AES-GCM encrypted bytes.
-     * @maxLength 13981152
      * @pattern ^[A-Za-z0-9+/]*={0,2}$
      */
   data: string;

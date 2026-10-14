@@ -9,7 +9,6 @@
 export interface ChatMedia {
   /**
      * Base64-encoded ECDH P-256 and AES-GCM encrypted bytes.
-     * @maxLength 13981152
      * @pattern ^[A-Za-z0-9+/]*={0,2}$
      */
   data: string;
