@@ -19,6 +19,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
+- Encrypted media storage: PostgreSQL by default; new uploads can use Cloudflare R2 or Backblaze B2 via `MEDIA_STORAGE_PROVIDER`. See `STORAGE.md`.
 
 ## Where things live
 

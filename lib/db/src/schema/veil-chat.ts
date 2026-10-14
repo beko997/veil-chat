@@ -34,7 +34,9 @@ export const veilChatMediaTable = pgTable("veil_chat_media", {
   roomId: uuid("room_id")
     .notNull()
     .references(() => veilChatRoomsTable.id, { onDelete: "cascade" }),
-  encryptedData: encryptedBlob("encrypted_data").notNull(),
+  encryptedData: encryptedBlob("encrypted_data"),
+  storageProvider: text("storage_provider"),
+  storageKey: text("storage_key"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
