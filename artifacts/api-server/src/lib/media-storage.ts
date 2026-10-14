@@ -1,4 +1,3 @@
-import { createReadStream } from "node:fs";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -133,7 +132,9 @@ export async function putEncryptedMedia(
       new PutObjectCommand({
         Bucket: bucket,
         Key: key,
-        Body: createReadStream(stagingPath),
+        // Reuse the already-buffered request bytes so bucket failures cannot
+        // race with cleanup while a path-backed stream is still opening.
+        Body: body,
         ContentLength: body.byteLength,
         ContentType: "application/octet-stream",
       }),
