@@ -1,8 +1,9 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  ArrowDown, ArrowLeft, ArrowRight, Check, Copy, Download, File, KeyRound,
-  LockKeyhole, MessageSquareText, Paperclip, RefreshCw, Send, ShieldCheck, TriangleAlert, X,
+  ArrowDown, ArrowLeft, ArrowRight, Check, Copy, Download, File, ImagePlus, KeyRound,
+  LockKeyhole, MessageSquareText, Paperclip, Pencil, RefreshCw, Send, ShieldCheck,
+  Trash2, TriangleAlert, UserRound, X,
 } from "lucide-react";
 import {
   getGetRoomMediaQueryKey, getListRoomMessagesQueryKey, useCreateRoom, useGetRoomMedia,
@@ -18,10 +19,41 @@ const queryClient = new QueryClient({
 });
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const SENDER_ID = getAnonymousId();
+const PROFILE_PREFIX = "__VEIL_PROFILE_V1__:";
+const PROFILE_STORAGE_KEY = "veil-local-profile-v1";
+const MAX_GIF_BYTES = 200 * 1024;
 
 type RoomRoute = { roomId: string; roomKey: string } | { invalid: true; reason: string } | null;
 type DecodedMessage = ChatMessage & { plainText: string | null };
 type MediaMetadata = { filename: string; mime: string; size: number };
+type LocalProfile = { displayName: string; avatarDataUrl: string; updatedAt: string };
+
+function makeDefaultProfile(): LocalProfile {
+  return { displayName: "Anonim", avatarDataUrl: "", updatedAt: new Date().toISOString() };
+}
+
+function readLocalProfile(): LocalProfile {
+  try {
+    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (raw) {
+      const value = JSON.parse(raw) as Partial<LocalProfile>;
+      if (typeof value.displayName === "string" && typeof value.avatarDataUrl === "string" && typeof value.updatedAt === "string") {
+        return { displayName: value.displayName.slice(0, 32) || "Anonim", avatarDataUrl: value.avatarDataUrl, updatedAt: value.updatedAt };
+      }
+    }
+  } catch { /* A damaged profile is treated as a fresh local profile. */ }
+  return makeDefaultProfile();
+}
+
+function parseProfileMessage(body: string | null): LocalProfile | null {
+  if (!body?.startsWith(PROFILE_PREFIX)) return null;
+  try {
+    const value = JSON.parse(body.slice(PROFILE_PREFIX.length)) as Partial<LocalProfile>;
+    if (typeof value.displayName !== "string" || typeof value.avatarDataUrl !== "string" || typeof value.updatedAt !== "string" || !Number.isFinite(Date.parse(value.updatedAt))) return null;
+    if (value.avatarDataUrl && (!/^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+=*$/.test(value.avatarDataUrl) || value.avatarDataUrl.length > 280 * 1024)) return null;
+    return { displayName: value.displayName.slice(0, 32) || "Anonim", avatarDataUrl: value.avatarDataUrl, updatedAt: value.updatedAt };
+  } catch { return null; }
+}
 
 function readRoomRoute(): RoomRoute {
   const hash = window.location.hash;
@@ -43,19 +75,29 @@ function goHome() {
 
 function App() {
   const [route, setRoute] = useState<RoomRoute>(() => readRoomRoute());
+  const [localProfile, setLocalProfile] = useState<LocalProfile>(() => readLocalProfile());
   useEffect(() => {
     const syncRoute = () => setRoute(readRoomRoute());
     window.addEventListener("hashchange", syncRoute);
     return () => window.removeEventListener("hashchange", syncRoute);
   }, []);
 
+  function saveLocalProfile(profile: LocalProfile) {
+    try {
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+      setLocalProfile(profile);
+    } catch {
+      throw new Error("Profil yerel depolamaya kaydedilemedi. Tarayıcı alanını kontrol edip yeniden deneyin.");
+    }
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <WouterRouter>
         <main className="grain min-h-[100dvh] bg-background text-foreground">
-          {route === null ? <HomeView /> : "invalid" in route
+          {route === null ? <HomeView profile={localProfile} onSaveProfile={saveLocalProfile} /> : "invalid" in route
             ? <InvalidInvite reason={route.reason} />
-            : <RoomView roomId={route.roomId} roomKey={route.roomKey} />}
+            : <RoomView key={`${route.roomId}:${route.roomKey}`} roomId={route.roomId} roomKey={route.roomKey} profile={localProfile} onSaveProfile={saveLocalProfile} />}
         </main>
       </WouterRouter>
     </QueryClientProvider>
@@ -73,11 +115,12 @@ function Brand({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function HomeView() {
+function HomeView({ profile, onSaveProfile }: { profile: LocalProfile; onSaveProfile: (profile: LocalProfile) => void }) {
   const [label, setLabel] = useState("");
   const [invite, setInvite] = useState("");
   const [joinError, setJoinError] = useState("");
   const [createError, setCreateError] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
   const createRoom = useCreateRoom();
 
   async function create() {
@@ -115,10 +158,14 @@ function HomeView() {
       <div className="pointer-events-none absolute -top-52 left-1/2 -z-10 h-[560px] w-[720px] -translate-x-1/2 rounded-full bg-emerald-700/[.075] blur-[110px]" />
       <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-6 sm:px-8">
         <Brand />
-        <div className="mono flex items-center gap-2 text-[10px] uppercase tracking-[.16em] text-emerald-400/80">
+        <div className="mono hidden items-center gap-2 text-[10px] uppercase tracking-[.16em] text-emerald-400/80 sm:flex">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
           hesapsız · uçtan uca
         </div>
+        <button data-testid="button-edit-profile-home" type="button" onClick={() => setProfileOpen(true)} className="btn-quiet !px-3 !py-2">
+          <ProfileAvatar profile={profile} size="small" testId="img-local-profile-avatar" />
+          <span className="max-w-28 truncate">{profile.displayName}</span><Pencil size={12} />
+        </button>
       </header>
 
       <section className="mx-auto max-w-6xl px-5 pb-16 pt-9 sm:px-8 sm:pt-16">
@@ -203,6 +250,119 @@ function HomeView() {
           <span>Paylaştığınız bağlantıya oda anahtarı dahildir. Güvendiğiniz kişilerle paylaşın.</span>
         </footer>
       </section>
+      {profileOpen && <ProfileEditor profile={profile} onClose={() => setProfileOpen(false)} onSave={onSaveProfile} />}
+    </div>
+  );
+}
+
+function ProfileAvatar({ profile, size = "normal", testId = "img-profile-avatar" }: { profile: LocalProfile; size?: "small" | "normal" | "large"; testId?: string }) {
+  const dimensions = size === "small" ? "h-8 w-8" : size === "large" ? "h-24 w-24" : "h-9 w-9";
+  return (
+    <span data-testid={testId} className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-emerald-700/50 bg-[#183326] text-sm font-bold text-emerald-300 ${dimensions}`}>
+      {profile.avatarDataUrl
+        ? <img src={profile.avatarDataUrl} alt={`${profile.displayName} profili`} className="h-full w-full object-cover" />
+        : <span aria-hidden="true">{profile.displayName.trim().slice(0, 1).toLocaleUpperCase("tr-TR") || <UserRound size={15} />}</span>}
+    </span>
+  );
+}
+
+async function prepareAvatar(file: File): Promise<string> {
+  const isGif = file.type === "image/gif" || /\.gif$/i.test(file.name);
+  if (isGif) {
+    if (file.size > MAX_GIF_BYTES) throw new Error("GIF dosyası 200 KiB sınırını aşıyor.");
+    return `data:image/gif;base64,${bufferToBase64(await file.arrayBuffer())}`;
+  }
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowed.includes(file.type)) throw new Error("Desteklenmeyen görsel türü. JPEG, PNG, WebP veya GIF seçin.");
+  if (file.size > 12 * 1024 * 1024) throw new Error("Görsel çok büyük. 12 MiB altında bir dosya seçin.");
+  const bitmap = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 320 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Görsel işlenemedi. Başka bir dosya deneyin.");
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.78, 0.64, 0.5, 0.38]) {
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      if (dataUrl.length <= 88 * 1024) return dataUrl;
+    }
+    throw new Error("Görsel yeterince küçültülemedi. Daha küçük bir dosya seçin.");
+  } finally {
+    bitmap.close();
+  }
+}
+
+function ProfileEditor({ profile, onClose, onSave }: {
+  profile: LocalProfile;
+  onClose: () => void;
+  onSave: (profile: LocalProfile) => void | Promise<void>;
+}) {
+  const [draft, setDraft] = useState<LocalProfile>(profile);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, saving]);
+
+  async function chooseAvatar(file?: File) {
+    if (!file) return;
+    setError("");
+    try {
+      const avatarDataUrl = await prepareAvatar(file);
+      setDraft((current) => ({ ...current, avatarDataUrl }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Profil görseli işlenemedi.");
+    }
+  }
+
+  async function save() {
+    const next = { ...draft, displayName: draft.displayName.trim().slice(0, 32) || "Anonim", updatedAt: new Date().toISOString() };
+    setError("");
+    setSaving(true);
+    try {
+      await onSave(next);
+      onClose();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Profil kaydedilemedi. Yeniden deneyin.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#020805]/80 p-0 backdrop-blur-sm sm:items-center sm:p-5" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+      <section data-testid="dialog-profile-editor" role="dialog" aria-modal="true" aria-labelledby="profile-editor-title" aria-describedby="profile-editor-description" className="enter w-full max-w-md rounded-t-2xl border border-[#294331] bg-[#0b1711] p-5 shadow-[0_24px_90px_rgba(0,0,0,.5)] sm:rounded-2xl sm:p-7">
+        <div className="flex items-start justify-between gap-4">
+          <div><p className="mono text-[10px] uppercase tracking-[.16em] text-emerald-500">Profil lokal</p><h2 id="profile-editor-title" className="mt-1 text-xl font-bold tracking-[-.04em]">Sana özel isim</h2></div>
+          <button data-testid="button-close-profile-editor" type="button" aria-label="Profil düzenleyicisini kapat" className="btn-quiet !h-9 !w-9 !p-0" onClick={onClose}><X size={15} /></button>
+        </div>
+        <p id="profile-editor-description" className="mt-2 text-xs leading-5 text-[#819788]">Bu profil yalnızca davet bağlantısını bilen kişilerce, oda anahtarıyla çözülebilir.</p>
+        <div className="mt-6 flex items-center gap-4 rounded-xl border border-[#20372a] bg-[#0d1a12] p-4">
+          <ProfileAvatar profile={draft} size="large" testId="img-profile-preview" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold">{draft.displayName || "Anonim"}</p>
+            <p className="mt-1 text-[10px] text-[#7c9384]">JPEG · PNG · WebP · animasyonlu GIF</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button data-testid="button-select-profile-avatar" type="button" className="btn-quiet !px-3 !py-2" onClick={() => fileRef.current?.click()}><ImagePlus size={13} /> Görsel seç</button>
+              {draft.avatarDataUrl && <button data-testid="button-remove-profile-avatar" type="button" className="btn-quiet !px-3 !py-2 text-rose-200" onClick={() => { setDraft((current) => ({ ...current, avatarDataUrl: "" })); setError(""); }}><Trash2 size={13} /> Kaldır</button>}
+            </div>
+          </div>
+        </div>
+        <input data-testid="input-profile-avatar" ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,.gif" className="sr-only" onChange={(event) => { void chooseAvatar(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
+        <label htmlFor="profile-display-name" className="mb-2 mt-5 block text-xs font-semibold text-[#a9b9ae]">Takma ad</label>
+        <input id="profile-display-name" data-testid="input-profile-display-name" className="veil-input" value={draft.displayName} maxLength={32} autoComplete="nickname" autoFocus onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") void save(); }} placeholder="Örn. Kuzey" />
+        <div className="mono mt-2 text-right text-[9px] text-[#6f897a]">{draft.displayName.length}/32</div>
+        {error && <p data-testid="text-profile-error" role="alert" className="mt-3 rounded-lg border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-xs leading-5 text-rose-200">{error}</p>}
+        <div className="mt-5 flex gap-2">
+          <button data-testid="button-cancel-profile" type="button" className="btn-quiet flex-1" disabled={saving} onClick={onClose}>İptal</button>
+          <button data-testid="button-save-profile" type="button" className="btn-primary flex-1" disabled={saving} onClick={() => void save()}>{saving ? "Kaydediliyor…" : <>Profili kaydet <Check size={14} /></>}</button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -239,23 +399,36 @@ function InvalidInvite({ reason }: { reason: string }) {
   );
 }
 
-function RoomView({ roomId, roomKey }: { roomId: string; roomKey: string }) {
+function RoomView({ roomId, roomKey, profile, onSaveProfile }: {
+  roomId: string;
+  roomKey: string;
+  profile: LocalProfile;
+  onSaveProfile: (profile: LocalProfile) => void;
+}) {
   const [key, setKey] = useState<RoomCryptoKey | null>(null);
   const [invalidKey, setInvalidKey] = useState(false);
   const [decodedMessages, setDecodedMessages] = useState<DecodedMessage[]>([]);
+  const [historyDecoded, setHistoryDecoded] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [copyState, setCopyState] = useState(false);
   const [sendError, setSendError] = useState("");
   const [fileError, setFileError] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
   const [lightbox, setLightbox] = useState<{ kind: "image" | "video"; src: string } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const lastProfileAttempt = useRef("");
   const sendMessage = useSendRoomMessage();
+  const mutateMessageRef = useRef(sendMessage.mutateAsync);
+  mutateMessageRef.current = sendMessage.mutateAsync;
   const params = useMemo(() => ({ roomId, limit: 100 }), [roomId]);
   const messagesQuery = useListRoomMessages(params, {
     query: { enabled: !!key, queryKey: getListRoomMessagesQueryKey(params), refetchInterval: 2500 },
   });
+  const refetchMessagesRef = useRef(messagesQuery.refetch);
+  refetchMessagesRef.current = messagesQuery.refetch;
 
   useEffect(() => {
     let cancelled = false;
@@ -269,16 +442,69 @@ function RoomView({ roomId, roomKey }: { roomId: string; roomKey: string }) {
     let cancelled = false;
     if (!key || !messagesQuery.data) {
       setDecodedMessages([]);
+      setHistoryDecoded(false);
       return () => { cancelled = true; };
     }
+    setHistoryDecoded(false);
     Promise.all(messagesQuery.data.map(async (message) => ({
       ...message,
       plainText: await decryptText(key, message.ciphertext, message.iv),
     }))).then((decoded) => {
-      if (!cancelled) setDecodedMessages(decoded.sort((a, b) => a.id - b.id));
+      if (!cancelled) {
+        setDecodedMessages(decoded.sort((a, b) => a.id - b.id));
+        setHistoryDecoded(true);
+      }
     });
     return () => { cancelled = true; };
   }, [key, messagesQuery.data]);
+
+  async function publishProfile(next: LocalProfile) {
+    const attemptId = `${roomId}:${next.updatedAt}`;
+    lastProfileAttempt.current = attemptId;
+    setProfileError("");
+    try {
+      const encrypted = await encryptText(key!, `${PROFILE_PREFIX}${JSON.stringify(next)}`);
+      await mutateMessageRef.current({ roomId, data: { ...encrypted, sender: SENDER_ID, kind: "text" } });
+      await refetchMessagesRef.current();
+    } catch {
+      setProfileError("Profil saklandı ancak odaya gönderilemedi. Yeniden kaydedip tekrar deneyin.");
+      throw new Error("Profil saklandı ancak şifreli oda güncellemesi gönderilemedi. Yeniden deneyin.");
+    }
+  }
+
+  async function saveRoomProfile(next: LocalProfile) {
+    onSaveProfile(next);
+    await publishProfile(next);
+  }
+
+  useEffect(() => {
+    if (!key || !historyDecoded || !messagesQuery.data) return;
+    const attemptId = `${roomId}:${profile.updatedAt}`;
+    if (lastProfileAttempt.current === attemptId) return;
+    const alreadyPublished = decodedMessages.some((message) =>
+      message.sender === SENDER_ID && parseProfileMessage(message.plainText)?.updatedAt === profile.updatedAt,
+    );
+    if (alreadyPublished) {
+      lastProfileAttempt.current = attemptId;
+      return;
+    }
+    lastProfileAttempt.current = attemptId;
+    void publishProfile(profile).catch(() => undefined);
+  }, [decodedMessages, historyDecoded, key, messagesQuery.data, profile, roomId]);
+
+  const profilesBySender = useMemo(() => {
+    const profiles = new Map<string, LocalProfile>();
+    for (const message of decodedMessages) {
+      const incoming = parseProfileMessage(message.plainText);
+      if (incoming && message.sender) profiles.set(message.sender, incoming);
+    }
+    profiles.set(SENDER_ID, profile);
+    return profiles;
+  }, [decodedMessages, profile]);
+  const visibleMessages = useMemo(
+    () => decodedMessages.filter((message) => !(message.kind === "text" && message.plainText?.startsWith(PROFILE_PREFIX))),
+    [decodedMessages],
+  );
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -353,6 +579,9 @@ function RoomView({ roomId, roomKey }: { roomId: string; roomKey: string }) {
             <p data-testid="text-room-id" className="mono mt-1 truncate text-[10px] text-[#718779]">{roomId}</p>
           </div>
           <span className="hidden items-center gap-1.5 text-[10px] text-[#789080] sm:inline-flex"><LockKeyhole size={13} className="text-emerald-500" /> Uçtan uca şifreli</span>
+          <button data-testid="button-edit-profile-room" type="button" onClick={() => setProfileOpen(true)} className="btn-quiet !px-2.5 !py-2" aria-label={`Profili düzenle: ${profile.displayName}`}>
+            <ProfileAvatar profile={profile} size="small" testId="img-room-profile-avatar" /><span className="hidden max-w-24 truncate sm:inline">{profile.displayName}</span><Pencil size={12} />
+          </button>
           <button data-testid="button-copy-invite" onClick={() => void copyInvite()} className="btn-quiet !px-3 !py-2.5">
             {copyState ? <Check size={14} /> : <Copy size={14} />}<span className="hidden sm:inline">{copyState ? "Kopyalandı" : "Davet bağlantısı"}</span><span className="sm:hidden">{copyState ? "Kopyalandı" : "Davet"}</span>
           </button>
@@ -375,7 +604,7 @@ function RoomView({ roomId, roomKey }: { roomId: string; roomKey: string }) {
               <p className="mt-2 text-xs leading-5 text-[#819788]">Sunucuya ulaşılamıyor. Bağlantıyı kontrol edip yeniden deneyin.</p>
               <button data-testid="button-retry-messages" className="btn-quiet mt-4" onClick={() => void messagesQuery.refetch()}><RefreshCw size={13} /> Yeniden dene</button>
             </div>
-          ) : decodedMessages.length === 0 ? (
+          ) : visibleMessages.length === 0 ? (
             <div className="m-auto max-w-sm py-16 text-center">
               <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-[#254130] bg-[#0c1a11] text-emerald-400"><MessageSquareText size={22} /></span>
               <p className="mono mt-5 text-[10px] uppercase tracking-[.16em] text-emerald-500/80">Bağlantı güvenli</p>
@@ -385,7 +614,7 @@ function RoomView({ roomId, roomKey }: { roomId: string; roomKey: string }) {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {decodedMessages.map((message) => <MessageBubble key={message.id} message={message} roomId={roomId} keyMaterial={key} onOpenMedia={setLightbox} />)}
+              {visibleMessages.map((message) => <MessageBubble key={message.id} message={message} roomId={roomId} keyMaterial={key} profiles={profilesBySender} onOpenMedia={setLightbox} />)}
             </div>
           )}
         </div>
@@ -395,6 +624,7 @@ function RoomView({ roomId, roomKey }: { roomId: string; roomKey: string }) {
         <div className="mx-auto max-w-3xl px-4 py-3 sm:px-7 sm:py-4">
           {sendError && <p role="alert" className="mb-2 text-xs text-rose-300">{sendError}</p>}
           {fileError && <p role="alert" className="mb-2 text-xs text-rose-300">{fileError}</p>}
+          {profileError && <p data-testid="text-profile-send-error" role="alert" className="mb-2 text-xs text-rose-300">{profileError}</p>}
           <div className="flex items-end gap-2 rounded-2xl border border-[#294331] bg-[#0d1912] p-2 transition-colors focus-within:border-emerald-700/80">
             <button data-testid="button-attach-file" aria-label="Fotoğraf, video veya dosya ekle" title="Dosya ekle · en fazla 10 MiB" onClick={() => fileRef.current?.click()} disabled={sendMessage.isPending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#8ca394] transition-colors hover:bg-emerald-950/60 hover:text-emerald-400 disabled:opacity-50"><Paperclip size={17} /></button>
             <textarea data-testid="input-message" ref={textareaRef} rows={1} value={messageText} onChange={(event) => setMessageText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitText(); } }} placeholder="Şifreli mesajını yaz…" className="max-h-[132px] min-h-10 flex-1 resize-none border-0 bg-transparent px-1 py-2.5 text-sm leading-5 text-[#dcebe1] outline-none placeholder:text-[#62796a]" />
@@ -409,32 +639,46 @@ function RoomView({ roomId, roomKey }: { roomId: string; roomKey: string }) {
         <button data-testid="button-close-lightbox" aria-label="Kapat" className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-white" onClick={() => setLightbox(null)}><X size={18} /></button>
         {lightbox.kind === "image" ? <img src={lightbox.src} alt="Şifresi çözülmüş görsel" className="max-h-[90vh] max-w-[94vw] rounded-lg object-contain" onClick={(event) => event.stopPropagation()} /> : <video src={lightbox.src} controls autoPlay className="max-h-[90vh] max-w-[94vw] rounded-lg" onClick={(event) => event.stopPropagation()} />}
       </div>}
+      {profileOpen && <ProfileEditor profile={profile} onClose={() => setProfileOpen(false)} onSave={saveRoomProfile} />}
     </div>
   );
 }
 
-function MessageBubble({ message, roomId, keyMaterial, onOpenMedia }: {
+function MessageBubble({ message, roomId, keyMaterial, profiles, onOpenMedia }: {
   message: DecodedMessage;
   roomId: string;
   keyMaterial: RoomCryptoKey;
+  profiles: Map<string, LocalProfile>;
   onOpenMedia: (value: { kind: "image" | "video"; src: string }) => void;
 }) {
   const mine = message.sender === SENDER_ID;
-  const ownClass = mine ? "ml-auto rounded-br-md border-emerald-800/40 bg-[#174b34] text-[#e2f4e8]" : "rounded-bl-md border-[#263d2e] bg-[#101d15] text-[#d9e8de]";
+  const ownClass = mine ? "rounded-br-md border-emerald-800/40 bg-[#174b34] text-[#e2f4e8]" : "rounded-bl-md border-[#263d2e] bg-[#101d15] text-[#d9e8de]";
+  const participant = (message.sender && profiles.get(message.sender)) || { displayName: "Anonim", avatarDataUrl: "", updatedAt: "" };
   const metadata = useMemo(() => {
     if (!message.plainText || message.kind === "text") return null;
     try { return JSON.parse(message.plainText) as MediaMetadata; } catch { return { filename: "Dosya", mime: "", size: 0 }; }
   }, [message.kind, message.plainText]);
   const time = new Date(message.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
   if (message.plainText === null) {
-    return <article data-testid={`message-${message.id}`} className={`max-w-[85%] border px-3.5 py-2.5 text-xs italic text-[#91a297] sm:max-w-[75%] ${ownClass}`}>Bu mesajın şifresi çözülemedi <time className="mono ml-2 text-[9px] opacity-50">{time}</time></article>;
+    return <div className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+      {!mine && <ProfileAvatar profile={participant} size="small" testId={`img-message-avatar-${message.id}`} />}
+      <article data-testid={`message-${message.id}`} className={`max-w-[85%] border px-3.5 py-2.5 text-xs italic text-[#91a297] sm:max-w-[75%] ${ownClass}`}>
+        Bu mesajın şifresi çözülemedi
+        <div className="mono mt-1.5 flex justify-end gap-2 text-[9px] not-italic opacity-60"><span data-testid={`text-message-sender-${message.id}`}>{participant.displayName}</span><time>{time}</time></div>
+      </article>
+      {mine && <ProfileAvatar profile={participant} size="small" testId={`img-message-avatar-${message.id}`} />}
+    </div>;
   }
   return (
-    <article data-testid={`message-${message.id}`} className={`w-fit max-w-[88%] border px-3.5 py-2.5 shadow-[0_5px_18px_rgba(0,0,0,.09)] sm:max-w-[75%] ${ownClass}`}>
-      {message.kind === "text" ? <p className="whitespace-pre-wrap break-words text-[13px] leading-[1.65]">{message.plainText}</p>
-        : <MediaAttachment message={message} roomId={roomId} keyMaterial={keyMaterial} metadata={metadata} onOpenMedia={onOpenMedia} />}
-      <div className="mono mt-1.5 flex justify-end gap-2 text-[9px] opacity-50"><span>{mine ? "sen" : "anonim"}</span><time>{time}</time></div>
-    </article>
+    <div className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+      {!mine && <ProfileAvatar profile={participant} size="small" testId={`img-message-avatar-${message.id}`} />}
+      <article data-testid={`message-${message.id}`} className={`w-fit max-w-[88%] border px-3.5 py-2.5 shadow-[0_5px_18px_rgba(0,0,0,.09)] sm:max-w-[75%] ${ownClass}`}>
+        {message.kind === "text" ? <p className="whitespace-pre-wrap break-words text-[13px] leading-[1.65]">{message.plainText}</p>
+          : <MediaAttachment message={message} roomId={roomId} keyMaterial={keyMaterial} metadata={metadata} onOpenMedia={onOpenMedia} />}
+        <div className="mono mt-1.5 flex items-center justify-end gap-2 text-[9px] opacity-60"><span data-testid={`text-message-sender-${message.id}`} className="flex min-w-0 items-center gap-1.5"><span className="max-w-32 truncate">{participant.displayName}</span>{mine && <span className="opacity-70">(sen)</span>}</span><time>{time}</time></div>
+      </article>
+      {mine && <ProfileAvatar profile={participant} size="small" testId={`img-message-avatar-${message.id}`} />}
+    </div>
   );
 }
 

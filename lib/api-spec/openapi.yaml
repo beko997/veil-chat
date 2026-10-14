@@ -194,7 +194,7 @@ components:
           type: string
           minLength: 1
           description: AES-GCM ciphertext; new rooms include an ephemeral ECDH P-256 public key envelope.
-          maxLength: 200256
+          maxLength: 500000
         iv:
           type: string
           minLength: 1

@@ -76,7 +76,7 @@ export const SendRoomMessageParams = zod.object({
   "roomId": zod.coerce.string().uuid()
 })
 
-export const sendRoomMessageBodyCiphertextMax = 200256;
+export const sendRoomMessageBodyCiphertextMax = 500000;
 
 export const sendRoomMessageBodyIvMax = 128;
 

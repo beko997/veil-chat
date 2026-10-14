@@ -62,7 +62,7 @@ export interface ChatMessageInput {
   /**
      * AES-GCM ciphertext; new rooms include an ephemeral ECDH P-256 public key envelope.
      * @minLength 1
-     * @maxLength 200256
+     * @maxLength 500000
      */
   ciphertext: string;
   /**
