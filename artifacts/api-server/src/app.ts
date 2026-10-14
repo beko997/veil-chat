@@ -31,4 +31,25 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
+const staticDirectory = process.env["STATIC_DIR"];
+
+if (staticDirectory) {
+  app.use(express.static(staticDirectory));
+  app.use((req, res, next) => {
+    const isApiRequest = /^\/api(?:\/|$)/i.test(req.path);
+
+    if (
+      (req.method !== "GET" && req.method !== "HEAD") ||
+      isApiRequest
+    ) {
+      next();
+      return;
+    }
+
+    res.sendFile("index.html", { root: staticDirectory }, (error) => {
+      if (error) next(error);
+    });
+  });
+}
+
 export default app;
